@@ -1,245 +1,300 @@
 import React, { useState } from "react";
-import { APPOINTMENTS, VEHICLES, SERVICES, TECHNICIANS } from "../data/mockData";
-import StatusBadge from "../components/StatusBadge";
-import Modal from "../components/Modal";
+import { APPOINTMENTS, VEHICLES, SERVICES } from "../data/mockData";
 
-const FILTERS = ["all", "pending", "active", "completed", "cancelled"];
+const APPT_KEY = "svss-appointments";
 
-const EMPTY_FORM = {
-  vehicleId:  "1",
-  service:    "Oil Change",
-  date:       "",
-  time:       "09:00",
-  technician: "",
-  notes:      "",
-  cost:       "",
-};
+function loadAppointments() {
+  try {
+    const saved = localStorage.getItem(APPT_KEY);
+    return saved ? JSON.parse(saved) : APPOINTMENTS;
+  } catch {
+    return APPOINTMENTS;
+  }
+}
+
+function saveAppointments(data) {
+  localStorage.setItem(APPT_KEY, JSON.stringify(data));
+}
+
+const TECHNICIANS = ["Murugan K.", "Selvam R.", "Vijay P.", "Rajan M.", "Kumar S.", "Anbu T."];
+const TABS = ["all", "pending", "active", "completed", "cancelled"];
 
 export default function Appointments({ showToast }) {
-  const [appointments, setAppointments] = useState(APPOINTMENTS);
-  const [filter,       setFilter]       = useState("all");
+  const [appointments, setAppointments] = useState(loadAppointments);
+  const [activeTab,    setActiveTab]    = useState("all");
   const [showModal,    setShowModal]    = useState(false);
-  const [form,         setForm]         = useState(EMPTY_FORM);
+  const [form, setForm] = useState({
+    vehicleId: "", service: "", date: "", time: "09:00 AM",
+    technician: TECHNICIANS[0], cost: "", notes: "",
+  });
 
-  const filtered =
-    filter === "all"
-      ? appointments
-      : appointments.filter((a) => a.status === filter);
+  // ── Helpers ──────────────────────────────────────────────────────────
+  const updateAppointments = (updated) => {
+    setAppointments(updated);
+    saveAppointments(updated);   // ← persist every change
+  };
 
-  const countOf = (s) =>
-    s === "all" ? appointments.length : appointments.filter((a) => a.status === s).length;
+  const filtered = appointments.filter(
+    (a) => activeTab === "all" || a.status === activeTab
+  );
 
-  const handleAdd = () => {
-    if (!form.date || !form.technician) {
-      showToast("Please fill in all required fields", "error");
+  // Load vehicles from localStorage too (in case user added new ones)
+  const vehicles = (() => {
+    try {
+      const saved = localStorage.getItem("svss-vehicles");
+      return saved ? JSON.parse(saved) : VEHICLES;
+    } catch { return VEHICLES; }
+  })();
+
+  // ── Update status ─────────────────────────────────────────────────────
+  const updateStatus = (id, status) => {
+    const updated = appointments.map((a) =>
+      a.id === id ? { ...a, status } : a
+    );
+    updateAppointments(updated);
+    showToast(`Status updated to ${status}`);
+  };
+
+  // ── Book appointment ──────────────────────────────────────────────────
+  const handleBook = () => {
+    if (!form.vehicleId || !form.service || !form.date) {
+      showToast("Vehicle, service and date are required.", "error");
       return;
     }
-    const vehicle = VEHICLES.find((v) => v.id === parseInt(form.vehicleId));
-    const svc     = SERVICES.find((s) => s.name === form.service);
-    const newA = {
+    const vehicle = vehicles.find((v) => v.id === parseInt(form.vehicleId));
+    const newAppt = {
       ...form,
       id:         Date.now(),
       vehicleId:  parseInt(form.vehicleId),
-      vehicle:    vehicle?.name  || "",
+      vehicle:    vehicle?.name || "Unknown",
       plate:      vehicle?.plate || "",
+      cost:       parseFloat(form.cost) || 0,
       status:     "pending",
-      cost:       parseInt(form.cost) || svc?.price || 0,
     };
-    setAppointments((prev) => [...prev, newA]);
+    const updated = [...appointments, newAppt];
+    updateAppointments(updated);
     setShowModal(false);
-    setForm(EMPTY_FORM);
-    showToast("Appointment booked!");
+    setForm({ vehicleId: "", service: "", date: "", time: "09:00 AM", technician: TECHNICIANS[0], cost: "", notes: "" });
+    showToast("Appointment booked successfully!");
   };
 
-  const updateStatus = (id, status) => {
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status } : a))
-    );
-    showToast(`Status updated to ${status}`);
+  // ── Delete appointment ────────────────────────────────────────────────
+  const handleDelete = (id) => {
+    const updated = appointments.filter((a) => a.id !== id);
+    updateAppointments(updated);
+    showToast("Appointment removed.");
   };
+
+  // ── Status badge color ────────────────────────────────────────────────
+  const badgeClass = (s) => ({
+    pending: "badge-pending", active: "badge-active",
+    completed: "badge-completed", cancelled: "badge-cancelled",
+  }[s] || "badge-pending");
 
   return (
     <div className="page">
       {/* Header */}
       <div className="page-header">
         <div className="page-header-left">
-          <h1>APPOINTMENTS</h1>
-          <p>Manage service appointments and track jobs</p>
+          <h1>Appointments</h1>
+          <p>Manage all service appointments</p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          + New Appointment
+          + Book Appointment
         </button>
       </div>
 
       {/* Filter Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
-        {FILTERS.map((f) => (
+        {TABS.map((tab) => (
           <button
-            key={f}
-            className={`btn btn-sm ${filter === f ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setFilter(f)}
+            key={tab}
+            className={`btn btn-sm ${activeTab === tab ? "btn-primary" : "btn-ghost"}`}
+            onClick={() => setActiveTab(tab)}
+            style={{ textTransform: "capitalize" }}
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-            <span style={{ opacity: 0.7 }}> ({countOf(f)})</span>
+            {tab} ({tab === "all"
+              ? appointments.length
+              : appointments.filter((a) => a.status === tab).length})
           </button>
         ))}
       </div>
 
       {/* Table */}
       <div className="table-card">
-        <table>
-          <thead>
-            <tr>
-              <th>Vehicle</th>
-              <th>Service</th>
-              <th>Date & Time</th>
-              <th>Technician</th>
-              <th>Cost</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((a) => (
-              <tr key={a.id}>
-                <td>
-                  <div style={{ fontWeight: 600 }}>{a.vehicle}</div>
-                  <div className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>{a.plate}</div>
-                </td>
-                <td>{a.service}</td>
-                <td>
-                  <div style={{ fontSize: 13 }}>{a.date}</div>
-                  <div style={{ color: "var(--muted)", fontSize: 12 }}>{a.time}</div>
-                </td>
-                <td>{a.technician}</td>
-                <td className="mono" style={{ color: "var(--green)" }}>
-                  ₹{a.cost.toLocaleString()}
-                </td>
-                <td><StatusBadge status={a.status} /></td>
-                <td>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    {a.status === "pending" && (
-                      <button className="btn btn-sm btn-success" onClick={() => updateStatus(a.id, "active")}>
-                        ▶ Start
-                      </button>
-                    )}
-                    {a.status === "active" && (
-                      <button className="btn btn-sm btn-primary" onClick={() => updateStatus(a.id, "completed")}>
-                        ✓ Done
-                      </button>
-                    )}
-                    {(a.status === "pending" || a.status === "active") && (
-                      <button className="btn btn-sm btn-danger" onClick={() => updateStatus(a.id, "cancelled")}>
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
+        <div className="table-header">
+          <h3>
+            {activeTab === "all" ? "All Appointments" : `${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)} Appointments`}
+          </h3>
+          <span style={{ fontSize: 13, color: "var(--muted)" }}>{filtered.length} records</span>
+        </div>
+
+        {filtered.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">📅</div>
             <p>No appointments found</p>
           </div>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Vehicle</th>
+                <th>Service</th>
+                <th>Date</th>
+                <th>Technician</th>
+                <th>Cost</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    <div style={{ fontWeight: 600 }}>{a.vehicle || a.vehicle_name}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "monospace" }}>{a.plate}</div>
+                  </td>
+                  <td>{a.service}</td>
+                  <td>
+                    <div>{a.date}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>{a.time}</div>
+                  </td>
+                  <td>{a.technician}</td>
+                  <td style={{ fontFamily: "monospace" }}>₹{Number(a.cost).toLocaleString()}</td>
+                  <td><span className={`badge ${badgeClass(a.status)}`}>{a.status}</span></td>
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {a.status === "pending" && (
+                        <button className="btn btn-success btn-sm" onClick={() => updateStatus(a.id, "active")}>
+                          ▶ Start
+                        </button>
+                      )}
+                      {a.status === "active" && (
+                        <button className="btn btn-success btn-sm" onClick={() => updateStatus(a.id, "completed")}>
+                          ✓ Done
+                        </button>
+                      )}
+                      {(a.status === "pending" || a.status === "active") && (
+                        <button className="btn btn-danger btn-sm" onClick={() => updateStatus(a.id, "cancelled")}>
+                          ✕ Cancel
+                        </button>
+                      )}
+                      <button className="btn btn-danger btn-sm" onClick={() => handleDelete(a.id)}>
+                        🗑
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
-      {/* New Appointment Modal */}
+      {/* Book Appointment Modal */}
       {showModal && (
-        <Modal
-          title="NEW APPOINTMENT"
-          onClose={() => setShowModal(false)}
-          actions={
-            <>
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title">Book Appointment</div>
+              <button className="modal-close" onClick={() => setShowModal(false)}>✕</button>
+            </div>
+
+            <div className="form-grid">
+              {/* Vehicle */}
+              <div className="form-group">
+                <label className="form-label">Vehicle *</label>
+                <select
+                  className="form-select"
+                  value={form.vehicleId}
+                  onChange={(e) => setForm({ ...form, vehicleId: e.target.value })}
+                >
+                  <option value="">Select vehicle</option>
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>{v.name} — {v.plate}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Service */}
+              <div className="form-group">
+                <label className="form-label">Service *</label>
+                <select
+                  className="form-select"
+                  value={form.service}
+                  onChange={(e) => setForm({ ...form, service: e.target.value })}
+                >
+                  <option value="">Select service</option>
+                  {SERVICES.map((s) => (
+                    <option key={s.id} value={s.name}>{s.name} — ₹{s.price}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date */}
+              <div className="form-group">
+                <label className="form-label">Date *</label>
+                <input
+                  className="form-input"
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                />
+              </div>
+
+              {/* Time */}
+              <div className="form-group">
+                <label className="form-label">Time</label>
+                <input
+                  className="form-input"
+                  type="time"
+                  value={form.time}
+                  onChange={(e) => setForm({ ...form, time: e.target.value })}
+                />
+              </div>
+
+              {/* Technician */}
+              <div className="form-group">
+                <label className="form-label">Technician</label>
+                <select
+                  className="form-select"
+                  value={form.technician}
+                  onChange={(e) => setForm({ ...form, technician: e.target.value })}
+                >
+                  {TECHNICIANS.map((t) => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+
+              {/* Cost */}
+              <div className="form-group">
+                <label className="form-label">Cost (₹)</label>
+                <input
+                  className="form-input"
+                  type="number"
+                  placeholder="0"
+                  value={form.cost}
+                  onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                />
+              </div>
+
+              {/* Notes */}
+              <div className="form-group full">
+                <label className="form-label">Notes</label>
+                <textarea
+                  className="form-textarea"
+                  placeholder="Any special instructions…"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAdd}>Book Appointment</button>
-            </>
-          }
-        >
-          <div className="form-grid">
-            <div className="form-group">
-              <label className="form-label">Vehicle</label>
-              <select
-                className="form-select"
-                value={form.vehicleId}
-                onChange={(e) => setForm((p) => ({ ...p, vehicleId: e.target.value }))}
-              >
-                {VEHICLES.map((v) => (
-                  <option key={v.id} value={v.id}>{v.name} — {v.plate}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Service Type</label>
-              <select
-                className="form-select"
-                value={form.service}
-                onChange={(e) => setForm((p) => ({ ...p, service: e.target.value }))}
-              >
-                {SERVICES.map((s) => (
-                  <option key={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Date *</label>
-              <input
-                className="form-input"
-                type="date"
-                value={form.date}
-                onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Time</label>
-              <input
-                className="form-input"
-                type="time"
-                value={form.time}
-                onChange={(e) => setForm((p) => ({ ...p, time: e.target.value }))}
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Technician *</label>
-              <select
-                className="form-select"
-                value={form.technician}
-                onChange={(e) => setForm((p) => ({ ...p, technician: e.target.value }))}
-              >
-                <option value="">Select technician</option>
-                {TECHNICIANS.map((t) => <option key={t}>{t}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Estimated Cost (₹)</label>
-              <input
-                className="form-input"
-                type="number"
-                placeholder="Auto-filled from service"
-                value={form.cost}
-                onChange={(e) => setForm((p) => ({ ...p, cost: e.target.value }))}
-              />
-            </div>
-
-            <div className="form-group full">
-              <label className="form-label">Notes</label>
-              <textarea
-                className="form-textarea"
-                placeholder="Additional notes or customer requests…"
-                value={form.notes}
-                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-              />
+              <button className="btn btn-primary" onClick={handleBook}>Book Appointment</button>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
     </div>
   );

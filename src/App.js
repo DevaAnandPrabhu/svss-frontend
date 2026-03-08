@@ -15,16 +15,37 @@ import "./styles/global.css";
 
 export default function App() {
   const { toasts, showToast } = useToast();
-  const themeValue             = useThemeProvider();
-  const [user, setUser]        = useState(null);
+  const themeValue = useThemeProvider();
 
-  const handleLogin  = (userData) => setUser(userData);
-  const handleLogout = ()         => setUser(null);
+  // ── Load user from localStorage on first render ──────────────────────
+  // This is the KEY fix: useState lazy initializer reads localStorage
+  // so on refresh, if user was logged in, they stay logged in
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("svss-user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // ── Login: save user to localStorage ─────────────────────────────────
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem("svss-user", JSON.stringify(userData));
+  };
+
+  // ── Logout: remove user from localStorage ────────────────────────────
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem("svss-user");
+    localStorage.removeItem("svss-token");
+  };
 
   return (
     <ThemeContext.Provider value={themeValue}>
 
-      {/* Not logged in */}
+      {/* Not logged in → show Login */}
       {!user && (
         <>
           <Login onLogin={handleLogin} />
@@ -32,7 +53,7 @@ export default function App() {
         </>
       )}
 
-      {/* Logged in */}
+      {/* Logged in → show full app */}
       {user && (
         <Router>
           <div className="app-shell">
